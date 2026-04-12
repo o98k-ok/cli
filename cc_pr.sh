@@ -84,6 +84,29 @@ if [ -z "$CHANGES" ]; then
   exit 1
 fi
 
+# Detect main branch and auto-create feature branch
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+MAIN_BRANCHES="main master"
+ON_MAIN=false
+for b in $MAIN_BRANCHES; do
+  if [ "$CURRENT_BRANCH" = "$b" ]; then
+    ON_MAIN=true
+    break
+  fi
+done
+
+if $ON_MAIN; then
+  BRANCH_NAME="feat/auto-$(date '+%Y%m%d-%H%M%S')"
+  log "当前在主分支 ${CURRENT_BRANCH}，自动创建分支: ${BRANCH_NAME}"
+  git checkout -b "$BRANCH_NAME"
+  if [ $? -ne 0 ]; then
+    log "ERROR: 创建分支失败"
+    exit 1
+  fi
+else
+  log "当前分支: ${CURRENT_BRANCH}"
+fi
+
 PROMPT="根据以下 git diff，请执行以下步骤（全程使用中文输出日志和说明）：
 
 1. 生成 commit message，严格遵循以下格式：
@@ -104,7 +127,7 @@ PROMPT="根据以下 git diff，请执行以下步骤（全程使用中文输出
 2. 用 git add 暂存所有变更
 3. 用生成的 commit message 提交
 4. 推送到远程仓库
-5. 如果 gh cli 可用，创建 PR 并附上清晰的标题和描述
+5. 用 gh cli 创建 PR（目标分支为 ${CURRENT_BRANCH:-main}），附上清晰的标题和描述
 
 \`\`\`diff
 ${CHANGES}
