@@ -1,20 +1,20 @@
 #!/bin/bash
 
 usage() {
-  echo "Usage: $0 [--cc <claude_path>] [--timeout <seconds>]"
-  echo "  --cc <path>       Path to claude CLI (default: claude)"
+  echo "Usage: $0 [--cc <config_path>] [--timeout <seconds>]"
+  echo "  --cc <path>       Claude config directory (default: ~/.claude/lemon)"
   echo "  --timeout <sec>   Timeout in seconds (default: 300)"
   echo ""
   echo "Run in a git repo. Reviews uncommitted/untracked changes."
   exit 1
 }
 
-CC_BIN="claude"
+CC_CONFIG="$HOME/.claude/lemon"
 TIMEOUT=300
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --cc) CC_BIN="$2"; shift 2 ;;
+    --cc) CC_CONFIG="$2"; shift 2 ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
     -h|--help) usage ;;
     *) echo "Unknown option: $1"; usage ;;
@@ -24,12 +24,19 @@ done
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
 log "Starting code review..."
-log "Claude CLI: ${CC_BIN}, Timeout: ${TIMEOUT}s"
+log "Config: ${CC_CONFIG}, Timeout: ${TIMEOUT}s"
 
-if ! command -v "$CC_BIN" &>/dev/null; then
-  log "ERROR: claude CLI not found at '${CC_BIN}'"
+if [ ! -d "$CC_CONFIG" ]; then
+  log "ERROR: Config directory not found: ${CC_CONFIG}"
   exit 1
 fi
+
+if ! command -v claude &>/dev/null; then
+  log "ERROR: claude CLI not found in PATH"
+  exit 1
+fi
+
+export CLAUDE_CONFIG_DIR="$CC_CONFIG"
 
 log "Collecting changes..."
 CHANGES=""
@@ -77,16 +84,16 @@ if [ -z "$CHANGES" ]; then
   exit 1
 fi
 
-PROMPT="You are a senior code reviewer. Review the following git diff carefully.
+PROMPT="你是一位资深代码审查专家。请仔细审查以下 git diff，全程使用中文输出。
 
-Focus on:
-1. Bugs and logic errors
-2. Security issues
-3. Performance problems
-4. Code style and readability
-5. Missing edge cases
+重点关注：
+1. Bug 和逻辑错误
+2. 安全问题
+3. 性能问题
+4. 代码风格和可读性
+5. 遗漏的边界情况
 
-Provide a structured review with severity levels (critical/warning/info).
+请以结构化格式输出审查结果，标注严重级别（严重/警告/建议）。
 
 \`\`\`diff
 ${CHANGES}
@@ -95,7 +102,7 @@ ${CHANGES}
 log "Sending to claude for review..."
 START_TIME=$(date +%s)
 
-timeout "${TIMEOUT}" "$CC_BIN" -p --dangerously-skip-permissions "$PROMPT"
+timeout "${TIMEOUT}" claude -p --dangerously-skip-permissions "$PROMPT"
 EXIT_CODE=$?
 
 END_TIME=$(date +%s)

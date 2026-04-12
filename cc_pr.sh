@@ -1,20 +1,20 @@
 #!/bin/bash
 
 usage() {
-  echo "Usage: $0 [--cc <claude_path>] [--timeout <seconds>]"
-  echo "  --cc <path>       Path to claude CLI (default: claude)"
+  echo "Usage: $0 [--cc <config_path>] [--timeout <seconds>]"
+  echo "  --cc <path>       Claude config directory (default: ~/.claude/lemon)"
   echo "  --timeout <sec>   Timeout in seconds (default: 600)"
   echo ""
   echo "Run in a git repo. Generates commit (type emoji: desc), pushes, and creates PR."
   exit 1
 }
 
-CC_BIN="claude"
+CC_CONFIG="$HOME/.claude/lemon"
 TIMEOUT=600
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --cc) CC_BIN="$2"; shift 2 ;;
+    --cc) CC_CONFIG="$2"; shift 2 ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
     -h|--help) usage ;;
     *) echo "Unknown option: $1"; usage ;;
@@ -24,12 +24,19 @@ done
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
 log "Starting PR creation..."
-log "Claude CLI: ${CC_BIN}, Timeout: ${TIMEOUT}s"
+log "Config: ${CC_CONFIG}, Timeout: ${TIMEOUT}s"
 
-if ! command -v "$CC_BIN" &>/dev/null; then
-  log "ERROR: claude CLI not found at '${CC_BIN}'"
+if [ ! -d "$CC_CONFIG" ]; then
+  log "ERROR: Config directory not found: ${CC_CONFIG}"
   exit 1
 fi
+
+if ! command -v claude &>/dev/null; then
+  log "ERROR: claude CLI not found in PATH"
+  exit 1
+fi
+
+export CLAUDE_CONFIG_DIR="$CC_CONFIG"
 
 log "Collecting changes..."
 CHANGES=""
@@ -77,28 +84,27 @@ if [ -z "$CHANGES" ]; then
   exit 1
 fi
 
-PROMPT="Based on the following git diff, do these steps:
+PROMPT="根据以下 git diff，请执行以下步骤（全程使用中文输出日志和说明）：
 
-1. Generate a commit message following this format strictly:
-   type emoji: description
+1. 生成 commit message，严格遵循以下格式：
+   type emoji: 描述（描述用英文）
    
-   Where type is one of: feat, fix, docs, style, refactor, perf, test, chore, ci, build
-   And emoji matches the type:
-   - feat ✨: new feature
-   - fix 🐛: bug fix
-   - docs 📝: documentation
-   - style 💄: formatting/style
-   - refactor ♻️: refactoring
-   - perf ⚡: performance
-   - test ✅: tests
-   - chore 🔧: chores
+   type 取值及对应 emoji：
+   - feat ✨: 新功能
+   - fix 🐛: 修复 bug
+   - docs 📝: 文档
+   - style 💄: 格式/样式
+   - refactor ♻️: 重构
+   - perf ⚡: 性能优化
+   - test ✅: 测试
+   - chore 🔧: 杂项
    - ci 👷: CI/CD
-   - build 📦: build system
+   - build 📦: 构建系统
 
-2. Stage all changes with git add
-3. Commit with the generated message
-4. Push to remote
-5. Create a PR using gh cli (if available) with a clear title and description
+2. 用 git add 暂存所有变更
+3. 用生成的 commit message 提交
+4. 推送到远程仓库
+5. 如果 gh cli 可用，创建 PR 并附上清晰的标题和描述
 
 \`\`\`diff
 ${CHANGES}
@@ -107,7 +113,7 @@ ${CHANGES}
 log "Sending to claude for PR creation..."
 START_TIME=$(date +%s)
 
-timeout "${TIMEOUT}" "$CC_BIN" -p --dangerously-skip-permissions "$PROMPT"
+timeout "${TIMEOUT}" claude -p --dangerously-skip-permissions "$PROMPT"
 EXIT_CODE=$?
 
 END_TIME=$(date +%s)
